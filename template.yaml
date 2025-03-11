@@ -5,17 +5,28 @@ Description: >
 
   Sample SAM Template for gif-generator
 
-# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
   Function:
     Timeout: 25
   Api:
     BinaryMediaTypes:
+      - "image/*"
       - "image/gif"
+      - "image/jpeg"
+      - "image/png"
+      - "image/webp"
+    Auth:
+      Authorizers:
+        JwtAuthorizer:
+          FunctionArn: !GetAtt AuthorizerFunction.Arn
+          Identity:
+            Header: Authorization
+            ValidationExpression: "^Bearer [-0-9a-zA-Z._]*$"
+          PayloadFormatVersion: "2.0"
 
 Resources:
   GifGeneratorFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       CodeUri: generator/
       Environment:
@@ -27,11 +38,13 @@ Resources:
         - x86_64
       Events:
         GifAPI:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /gif-gen/{prompt}
             Method: get
-    Metadata: # Manage esbuild properties
+            Auth:
+              Authorizer: JwtAuthorizer
+    Metadata:
       BuildMethod: esbuild
       BuildProperties:
         Minify: true
@@ -39,3 +52,37 @@ Resources:
         Sourcemap: true
         EntryPoints:
           - app.ts
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: generator/
+      Environment:
+        Variables:
+          PUBLIC_KEY: |
+            -----BEGIN PUBLIC KEY-----
+            MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuJY7bmIc1HHSi+eSY7OM
+            oAdKiiNPhlNlsnUolJQ0MF1LU0VTpCSEXNXn4jaCAbiM59zcP65E/QsxzcvAaS/W
+            RBAdltaUPmG/mOmseRtavW0vHFgxNTe88LnQ1qwJw0KA6RSJSnGdRFXgFS+8Y7PI
+            tdz/wLxxPLQ6fTjBv1SPrJRzE+1O6rXSQFKn+3GJgVPa31Iq//lIK7q9dJLWxlC8
+            vLnCT8VVoUpM4vxobpfEnRZ2w7ANkZTxGTuGN5jDOlynoqZuMdUs4VfdW0DV9LO6
+            20UHSXlFj7l2KvGyaVLEAHtFbp8TFKIgl26nYgV04/xXsViGQpKh0VVm3ft8K7YO
+            dQIDAQAB
+            -----END PUBLIC KEY-----
+      Handler: authorizer.lambdaHandler
+      Runtime: nodejs22.x
+      Architectures:
+        - x86_64
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints:
+          - authorizer.ts
+
+Outputs:
+  GifApi:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/gif-gen/{prompt}"
